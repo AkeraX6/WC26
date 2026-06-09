@@ -391,24 +391,6 @@ if current_step == 1:
 </div>
 """, unsafe_allow_html=True)
 
-    # Leaderboard
-    st.markdown("---")
-    st.markdown('<div class="section-header"><h3>🏆 Clasificación Actual</h3></div>', unsafe_allow_html=True)
-    all_users = supabase.table("users").select("*").execute().data
-    if all_users:
-        df = calculate_scores()
-        if not df.empty:
-            st.dataframe(df, use_container_width=True)
-    else:
-        st.info("Aún no hay participantes. ¡Sé el primero!")
-
-    # Participants list
-    st.markdown("---")
-    if all_users:
-        st.markdown("#### 📋 Participantes registrados")
-        participant_names = [u['name'] for u in all_users]
-        st.write(" • ".join(participant_names))
-
     # Name input
     st.markdown("---")
     st.markdown("### 👤 Introduce tu nombre para participar")
@@ -422,6 +404,23 @@ if current_step == 1:
             st.rerun()
         else:
             st.error("⚠️ Por favor, introduce tu nombre para continuar.")
+
+    # Leaderboard
+    st.markdown("---")
+    st.markdown('<div class="section-header"><h3>🏆 Clasificación Actual</h3></div>', unsafe_allow_html=True)
+    all_users = supabase.table("users").select("*").execute().data
+    if all_users:
+        df = calculate_scores()
+        if not df.empty:
+            st.dataframe(df, use_container_width=True)
+    else:
+        st.info("Aún no hay participantes. ¡Sé el primero!")
+
+    # Participants list
+    if all_users:
+        st.markdown("#### 📋 Participantes registrados")
+        participant_names = [u['name'] for u in all_users]
+        st.write(" • ".join(participant_names))
 
     st.stop()
 
@@ -614,4 +613,3 @@ elif current_step == 5:
     if st.button("✏️ Modificar mis predicciones", use_container_width=True):
         st.session_state["step"] = 2
         st.rerun()
-
