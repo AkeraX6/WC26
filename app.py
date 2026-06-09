@@ -388,6 +388,15 @@ if current_step == 1:
         📊 Al finalizar el Mundial se publicará la <strong>clasificación final</strong> 
         con la puntuación de cada participante.
     </p>
+    <hr style="border-color: #0f3460; margin: 1rem 0;">
+    <p><strong>📝 ¿Cómo participar?</strong></p>
+    <ol style="margin: 0.5rem 0; padding-left: 1.2rem;">
+        <li>Escribe tu nombre abajo y pulsa <em>Siguiente</em></li>
+        <li><strong>Sección 1:</strong> Elige el 1º y 2º de cada grupo → pulsa <em>Siguiente</em></li>
+        <li><strong>Sección 2:</strong> Elige los 4 finalistas (campeón, subcampeón, 3º y 4º) → pulsa <em>Siguiente</em></li>
+        <li><strong>Sección 3:</strong> Elige máximo goleador, equipo con más rojas, más penaltis y equipo revelación → pulsa <em>Finalizar</em></li>
+    </ol>
+    <p style="margin-top: 0.5rem;">¡Listo! Tus predicciones se guardan automáticamente. 🍀</p>
 </div>
 """, unsafe_allow_html=True)
 
