@@ -205,26 +205,16 @@ def calculate_scores() -> pd.DataFrame:
 # ── CUSTOM CSS ──────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* Header styling */
     .main-header {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        padding: 2rem;
+        padding: 1.5rem 1rem;
         border-radius: 15px;
         text-align: center;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1rem;
         border: 2px solid #e94560;
     }
-    .main-header h1 {
-        color: #FFD700 !important;
-        font-size: 2.5rem;
-        margin: 0;
-    }
-    .main-header p {
-        color: #e0e0e0;
-        font-size: 1.1rem;
-        margin: 0.5rem 0 0 0;
-    }
-    /* Section headers */
+    .main-header h1 { color: #FFD700 !important; font-size: 2rem; margin: 0; }
+    .main-header p { color: #e0e0e0; font-size: 1rem; margin: 0.5rem 0 0 0; }
     .section-header {
         background: linear-gradient(90deg, #0f3460, #16213e);
         color: #FFD700;
@@ -233,7 +223,6 @@ st.markdown("""
         border-left: 5px solid #e94560;
         margin: 1.5rem 0 1rem 0;
     }
-    /* Info cards */
     .points-card {
         background: #16213e;
         border: 1px solid #0f3460;
@@ -243,75 +232,203 @@ st.markdown("""
         margin-bottom: 1rem;
     }
     .points-card strong { color: #FFD700; }
-    /* Streamlit overrides */
+    .welcome-box {
+        background: #16213e;
+        border: 1px solid #0f3460;
+        border-radius: 12px;
+        padding: 1.2rem;
+        color: #e0e0e0;
+        line-height: 1.6;
+        margin: 1rem 0;
+    }
+    .welcome-box h3 { color: #FFD700; margin-top: 0; }
+    .prize { color: #4CAF50; font-weight: bold; }
+    .thank-you {
+        text-align: center;
+        padding: 3rem 1rem;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        border-radius: 15px;
+        border: 2px solid #4CAF50;
+        margin: 2rem 0;
+    }
+    .thank-you h2 { color: #FFD700 !important; }
+    .thank-you p { color: #e0e0e0; font-size: 1.1rem; }
     div[data-testid="stMetric"] {
         background: linear-gradient(135deg, #1a1a2e, #16213e);
         border: 1px solid #0f3460;
         border-radius: 10px;
         padding: 1rem;
     }
+    @media (max-width: 768px) {
+        .main-header h1 { font-size: 1.5rem; }
+        .main-header p { font-size: 0.85rem; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ── HEADER ──────────────────────────────────────────────────
-st.markdown("""
+# ── STEP NAVIGATION ────────────────────────────────────────
+if "step" not in st.session_state:
+    st.session_state["step"] = 1
+
+def go_to_step(n):
+    st.session_state["step"] = n
+
+current_step = st.session_state["step"]
+
+# ── SIDEBAR ────────────────────────────────────────────────
+with st.sidebar:
+    st.image("https://upload.wikimedia.org/wikipedia/en/thumb/e/e3/2026_FIFA_World_Cup.svg/200px-2026_FIFA_World_Cup.svg.png", width=120)
+    st.markdown("### ⚽ Porra Mundial 2026")
+    st.markdown("---")
+
+    # Admin panel in sidebar (password protected)
+    st.markdown("### 🔧 Panel Admin")
+    admin_pass = st.text_input("Contraseña Admin", type="password", key="admin_pw")
+
+    if admin_pass == st.secrets.get("ADMIN_PASSWORD", "worldcup2026"):
+        st.success("🔓 Acceso concedido")
+
+        # Show detailed points breakdown
+        st.markdown("#### 📊 Desglose de Puntos")
+        df_scores = calculate_scores()
+        if not df_scores.empty:
+            st.dataframe(df_scores, use_container_width=True)
+        else:
+            st.caption("Sin datos aún.")
+
+        st.markdown("---")
+        st.markdown("#### ✏️ Actualizar Resultados Reales")
+
+        admin_section = st.selectbox("Sección", ["Grupos", "Final Four", "Especiales"], key="adm_section")
+
+        if admin_section == "Grupos":
+            actual_groups_raw = supabase.table("actual_results").select("*").execute().data
+            actual_map = {r["group_name"]: r for r in actual_groups_raw}
+
+            for gname in GROUPS:
+                teams = GROUPS[gname]
+                existing_actual = actual_map.get(gname, {})
+                st.markdown(f"**Grupo {gname}**")
+                def_1 = teams.index(existing_actual["first_place"]) if existing_actual.get("first_place") in teams else 0
+                a_first = st.selectbox(f"1º", teams, index=def_1, key=f"adm_g{gname}_1", format_func=lambda t: f"{flag(t)} {t}")
+                opts = [t for t in teams if t != a_first]
+                def_2 = opts.index(existing_actual["second_place"]) if existing_actual.get("second_place") in opts else 0
+                a_second = st.selectbox(f"2º", opts, index=def_2, key=f"adm_g{gname}_2", format_func=lambda t: f"{flag(t)} {t}")
+
+                if st.button(f"Guardar Grupo {gname}", key=f"adm_save_{gname}"):
+                    supabase.table("actual_results").upsert({
+                        "group_name": gname,
+                        "first_place": a_first,
+                        "second_place": a_second,
+                    }, on_conflict="group_name").execute()
+                    st.success(f"Grupo {gname} guardado!")
+
+        elif admin_section == "Final Four":
+            af = supabase.table("actual_finals").select("*").execute().data
+            af = af[0] if af else {}
+            aw = st.selectbox("Campeón", ALL_TEAMS, index=ALL_TEAMS.index(af["winner"]) if af.get("winner") in ALL_TEAMS else 0, key="adm_w", format_func=lambda t: f"{flag(t)} {t}")
+            a2 = st.selectbox("Segundo", [t for t in ALL_TEAMS if t != aw], key="adm_2", format_func=lambda t: f"{flag(t)} {t}")
+            a3 = st.selectbox("Tercero", [t for t in ALL_TEAMS if t not in [aw, a2]], key="adm_3", format_func=lambda t: f"{flag(t)} {t}")
+            a4 = st.selectbox("Cuarto", [t for t in ALL_TEAMS if t not in [aw, a2, a3]], key="adm_4", format_func=lambda t: f"{flag(t)} {t}")
+
+            if st.button("Guardar Final Four", key="adm_save_finals"):
+                supabase.table("actual_finals").update({
+                    "winner": aw, "second": a2, "third": a3, "fourth": a4,
+                }).eq("id", af["id"]).execute()
+                st.success("Final Four guardado!")
+
+        elif admin_section == "Especiales":
+            asp = supabase.table("actual_specials").select("*").execute().data
+            asp = asp[0] if asp else {}
+            a_scorer = st.text_input("Máximo Goleador", value=asp.get("top_scorer", "") or "", key="adm_scorer")
+            a_red = st.selectbox("Más Tarjetas Rojas", ALL_TEAMS, key="adm_red", format_func=lambda t: f"{flag(t)} {t}")
+            a_pen = st.selectbox("Más Penaltis", ALL_TEAMS, key="adm_pen", format_func=lambda t: f"{flag(t)} {t}")
+            a_rev = st.selectbox("Equipo Revelación", ALL_TEAMS, key="adm_rev", format_func=lambda t: f"{flag(t)} {t}")
+
+            if st.button("Guardar Especiales", key="adm_save_specials"):
+                supabase.table("actual_specials").update({
+                    "top_scorer": a_scorer,
+                    "most_red_cards_team": a_red,
+                    "most_penalties_team": a_pen,
+                    "revelation_team": a_rev,
+                }).eq("id", asp["id"]).execute()
+                st.success("Especiales guardado!")
+
+    elif admin_pass:
+        st.error("❌ Contraseña incorrecta.")
+
+# ══════════════════════════════════════════════════════════════
+# STEP 1: WELCOME PAGE
+# ══════════════════════════════════════════════════════════════
+if current_step == 1:
+    st.markdown("""
 <div class="main-header">
-    <h1>⚽ World Cup 2026 Prediction Pool 🏆</h1>
-    <p>USA 🇺🇸 • Mexico 🇲🇽 • Canada 🇨🇦 &nbsp;|&nbsp; June 11 – July 19, 2026</p>
+    <h1>⚽ Porra Mundial 2026 🏆</h1>
+    <p>USA 🇺🇸 • México 🇲🇽 • Canadá 🇨🇦 &nbsp;|&nbsp; 11 junio – 19 julio 2026</p>
 </div>
 """, unsafe_allow_html=True)
 
-# ── SIDEBAR: USER LOGIN ────────────────────────────────────
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/en/thumb/e/e3/2026_FIFA_World_Cup.svg/200px-2026_FIFA_World_Cup.svg.png", width=150)
-    st.markdown("### 👤 Enter Your Name")
-    username = st.text_input("Name", placeholder="e.g. Carlos", label_visibility="collapsed")
-
-    if username:
-        user = get_or_create_user(username)
-        st.success(f"Welcome, **{user['name']}**!")
-        st.session_state["user"] = user
-    else:
-        st.info("Type your name to start predicting.")
-        st.session_state.pop("user", None)
-
-    st.markdown("---")
-    st.markdown("### 📊 Scoring System")
     st.markdown("""
-**Section 1 – Groups:**
-- 1 pt per correct team (right position)
-- 1 pt if team qualifies but wrong position
-- 3 pts if both 1st & 2nd are exact
+<div class="welcome-box">
+    <h3>🎉 ¡Bienvenido a la Porra del Mundial 2026!</h3>
+    <p>
+        Esto es una <strong>porra</strong> para el Mundial de Fútbol 2026.
+        ¡Demuestra cuánto sabes de fútbol y compite contra tus amigos!
+    </p>
+    <p>
+        💰 <strong>Cuota de inscripción:</strong> 5€ por participante
+    </p>
+    <p>
+        🏆 <strong>Reparto de premios</strong> (del bote total acumulado):<br>
+        &nbsp;&nbsp;&nbsp;🥇 1º clasificado: <span class="prize">75%</span><br>
+        &nbsp;&nbsp;&nbsp;🥈 2º clasificado: <span class="prize">20%</span><br>
+        &nbsp;&nbsp;&nbsp;🥉 3º clasificado: <span class="prize">5%</span>
+    </p>
+    <p>
+        📊 Al finalizar el Mundial se publicará la <strong>clasificación final</strong> 
+        con la puntuación de cada participante.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-**Section 2 – Final Four:**
-- 🥇 Winner: 10 pts
-- 🥈 Second: 7 pts
-- 🥉 Third: 5 pts
-- 4th: 3 pts
-
-**Section 3 – Special:**
-- 4 pts per correct prediction
-    """)
-
-# ── MAIN CONTENT ────────────────────────────────────────────
-if "user" not in st.session_state:
-    st.markdown("## 👈 Enter your name in the sidebar to begin!")
+    # Leaderboard
     st.markdown("---")
-
-    # Still show leaderboard
-    st.markdown('<div class="section-header"><h3>🏆 Leaderboard</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header"><h3>🏆 Clasificación Actual</h3></div>', unsafe_allow_html=True)
     all_users = supabase.table("users").select("*").execute().data
     if all_users:
         df = calculate_scores()
         if not df.empty:
             st.dataframe(df, use_container_width=True)
-
-        st.markdown("#### 📋 Registered Participants")
-        for u in all_users:
-            st.write(f"• {u['name']}")
     else:
-        st.info("No participants yet. Be the first to register!")
+        st.info("Aún no hay participantes. ¡Sé el primero!")
+
+    # Participants list
+    st.markdown("---")
+    if all_users:
+        st.markdown("#### 📋 Participantes registrados")
+        participant_names = [u['name'] for u in all_users]
+        st.write(" • ".join(participant_names))
+
+    # Name input
+    st.markdown("---")
+    st.markdown("### 👤 Introduce tu nombre para participar")
+    username = st.text_input("Nombre", placeholder="Ej: Carlos", label_visibility="collapsed", key="username_input")
+
+    if st.button("Siguiente ➡️", type="primary", use_container_width=True):
+        if username and username.strip():
+            user = get_or_create_user(username)
+            st.session_state["user"] = user
+            st.session_state["step"] = 2
+            st.rerun()
+        else:
+            st.error("⚠️ Por favor, introduce tu nombre para continuar.")
+
     st.stop()
+
+# ── Check user is logged in for steps 2-5 ──────────────────
+if "user" not in st.session_state:
+    st.session_state["step"] = 1
+    st.rerun()
 
 user = st.session_state["user"]
 user_id = user["id"]
@@ -321,21 +438,21 @@ existing_groups = load_user_group_preds(user_id)
 existing_finals = load_user_final_preds(user_id)
 existing_specials = load_user_special_preds(user_id)
 
-# ── TABS ────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🏟️ Section 1: Group Stage",
-    "🏆 Section 2: Final Four",
-    "⭐ Section 3: Special Categories",
-    "📊 Leaderboard",
-    "🔧 Admin Panel",
-])
+# Header for steps 2-5
+st.markdown("""
+<div class="main-header">
+    <h1>⚽ Porra Mundial 2026 🏆</h1>
+    <p>Hola, {name}! &nbsp;|&nbsp; Paso {step} de 4</p>
+</div>
+""".format(name=user["name"], step=current_step - 1), unsafe_allow_html=True)
 
-# ── TAB 1: GROUP STAGE ─────────────────────────────────────
-with tab1:
-    st.markdown('<div class="section-header"><h3>🏟️ Section 1: Predict 1st & 2nd Place for Each Group</h3></div>', unsafe_allow_html=True)
-    st.markdown('<div class="points-card">🎯 <strong>1 point</strong> per correct team in correct position · <strong>1 point</strong> if team qualifies but in wrong position · <strong>3 points</strong> if both 1st and 2nd are exactly right</div>', unsafe_allow_html=True)
+# ══════════════════════════════════════════════════════════════
+# STEP 2: GROUP STAGE
+# ══════════════════════════════════════════════════════════════
+if current_step == 2:
+    st.markdown('<div class="section-header"><h3>🏟️ Sección 1: Predice el 1º y 2º de cada grupo</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="points-card">🎯 <strong>1 punto</strong> por equipo en posición correcta · <strong>1 punto</strong> si clasifica pero posición incorrecta · <strong>3 puntos</strong> si 1º y 2º son exactos</div>', unsafe_allow_html=True)
 
-    # Display groups in a grid (3 columns x 4 rows)
     group_selections = {}
     group_names = list(GROUPS.keys())
 
@@ -351,254 +468,150 @@ with tab1:
 
             with cols[col_idx]:
                 team_labels = [f"{flag(t)} {t}" for t in teams]
-                st.markdown(f"**Group {gname}**")
+                st.markdown(f"**Grupo {gname}**")
                 st.caption(" · ".join(team_labels))
 
                 default_1st = teams.index(existing["first_place"]) if existing.get("first_place") in teams else 0
-                default_2nd = teams.index(existing["second_place"]) if existing.get("second_place") in teams else 1
-
                 first = st.selectbox(
-                    f"🥇 1st Place",
-                    teams,
-                    index=default_1st,
-                    key=f"g{gname}_1",
+                    f"🥇 1º", teams, index=default_1st, key=f"g{gname}_1",
                     format_func=lambda t: f"{flag(t)} {t}",
                 )
                 second_options = [t for t in teams if t != first]
                 default_2nd_filtered = second_options.index(existing["second_place"]) if existing.get("second_place") in second_options else 0
                 second = st.selectbox(
-                    f"🥈 2nd Place",
-                    second_options,
-                    index=default_2nd_filtered,
-                    key=f"g{gname}_2",
+                    f"🥈 2º", second_options, index=default_2nd_filtered, key=f"g{gname}_2",
                     format_func=lambda t: f"{flag(t)} {t}",
                 )
                 group_selections[gname] = (first, second)
                 st.markdown("---")
 
-    if st.button("💾 Save Group Predictions", type="primary", use_container_width=True):
+    if st.button("Siguiente ➡️  (guarda automáticamente)", type="primary", use_container_width=True):
         for gname, (first, second) in group_selections.items():
             save_group_prediction(user_id, gname, first, second)
-        st.success("✅ Group predictions saved!")
-        st.balloons()
+        st.session_state["step"] = 3
+        st.rerun()
 
-# ── TAB 2: FINAL FOUR ──────────────────────────────────────
-with tab2:
-    st.markdown('<div class="section-header"><h3>🏆 Section 2: Predict the Final Four</h3></div>', unsafe_allow_html=True)
-    st.markdown('<div class="points-card">🥇 Winner: <strong>10 pts</strong> · 🥈 Second: <strong>7 pts</strong> · 🥉 Third: <strong>5 pts</strong> · 4th: <strong>3 pts</strong> · Max possible: <strong>25 points</strong></div>', unsafe_allow_html=True)
+# ══════════════════════════════════════════════════════════════
+# STEP 3: FINAL FOUR
+# ══════════════════════════════════════════════════════════════
+elif current_step == 3:
+    st.markdown('<div class="section-header"><h3>🏆 Sección 2: Predice el Final Four</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="points-card">🥇 Campeón: <strong>10 pts</strong> · 🥈 Segundo: <strong>7 pts</strong> · 🥉 Tercero: <strong>5 pts</strong> · 4º: <strong>3 pts</strong></div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
     with col1:
         default_w = ALL_TEAMS.index(existing_finals["winner"]) if existing_finals and existing_finals.get("winner") in ALL_TEAMS else 0
-        winner = st.selectbox("🥇 World Cup Winner", ALL_TEAMS, index=default_w, key="f_winner", format_func=lambda t: f"{flag(t)} {t}")
+        winner = st.selectbox("🥇 Campeón del Mundial", ALL_TEAMS, index=default_w, key="f_winner", format_func=lambda t: f"{flag(t)} {t}")
 
         remaining_2 = [t for t in ALL_TEAMS if t != winner]
         default_s = remaining_2.index(existing_finals["second"]) if existing_finals and existing_finals.get("second") in remaining_2 else 0
-        second = st.selectbox("🥈 Runner-up (2nd)", remaining_2, index=default_s, key="f_second", format_func=lambda t: f"{flag(t)} {t}")
+        second = st.selectbox("🥈 Subcampeón", remaining_2, index=default_s, key="f_second", format_func=lambda t: f"{flag(t)} {t}")
 
     with col2:
         remaining_3 = [t for t in ALL_TEAMS if t not in [winner, second]]
         default_t = remaining_3.index(existing_finals["third"]) if existing_finals and existing_finals.get("third") in remaining_3 else 0
-        third = st.selectbox("🥉 Third Place", remaining_3, index=default_t, key="f_third", format_func=lambda t: f"{flag(t)} {t}")
+        third = st.selectbox("🥉 Tercer puesto", remaining_3, index=default_t, key="f_third", format_func=lambda t: f"{flag(t)} {t}")
 
         remaining_4 = [t for t in ALL_TEAMS if t not in [winner, second, third]]
         default_f = remaining_4.index(existing_finals["fourth"]) if existing_finals and existing_finals.get("fourth") in remaining_4 else 0
-        fourth = st.selectbox("4️⃣ Fourth Place", remaining_4, index=default_f, key="f_fourth", format_func=lambda t: f"{flag(t)} {t}")
+        fourth = st.selectbox("4️⃣ Cuarto puesto", remaining_4, index=default_f, key="f_fourth", format_func=lambda t: f"{flag(t)} {t}")
 
     st.markdown(f"""
-    ### Your Final Four:
-    | Position | Team |
-    |----------|------|
-    | 🥇 Winner | {flag(winner)} {winner} |
-    | 🥈 Second | {flag(second)} {second} |
-    | 🥉 Third | {flag(third)} {third} |
-    | 4️⃣ Fourth | {flag(fourth)} {fourth} |
+| Posición | Equipo |
+|----------|--------|
+| 🥇 Campeón | {flag(winner)} {winner} |
+| 🥈 Segundo | {flag(second)} {second} |
+| 🥉 Tercero | {flag(third)} {third} |
+| 4️⃣ Cuarto | {flag(fourth)} {fourth} |
     """)
 
-    if st.button("💾 Save Final Four Predictions", type="primary", use_container_width=True):
+    if st.button("Siguiente ➡️  (guarda automáticamente)", type="primary", use_container_width=True):
         save_final_prediction(user_id, winner, second, third, fourth)
-        st.success("✅ Final four predictions saved!")
-        st.balloons()
+        st.session_state["step"] = 4
+        st.rerun()
 
-# ── TAB 3: SPECIAL CATEGORIES ──────────────────────────────
-with tab3:
-    st.markdown('<div class="section-header"><h3>⭐ Section 3: Special Category Predictions</h3></div>', unsafe_allow_html=True)
-    st.markdown('<div class="points-card">🎯 <strong>4 points</strong> for each correct prediction · Max possible: <strong>16 points</strong></div>', unsafe_allow_html=True)
+# ══════════════════════════════════════════════════════════════
+# STEP 4: SPECIAL CATEGORIES
+# ══════════════════════════════════════════════════════════════
+elif current_step == 4:
+    st.markdown('<div class="section-header"><h3>⭐ Sección 3: Categorías Especiales</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="points-card">🎯 <strong>4 puntos</strong> por cada predicción correcta · Máximo: <strong>16 puntos</strong></div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
     with col1:
         default_scorer = existing_specials.get("top_scorer", "") if existing_specials else ""
         top_scorer = st.text_input(
-            "⚽ Top Scorer (Golden Boot)",
+            "⚽ Máximo Goleador (Bota de Oro)",
             value=default_scorer,
-            placeholder="e.g. Kylian Mbappé",
-            help="Type the player's name who you think will score the most goals."
+            placeholder="Ej: Kylian Mbappé",
+            help="Nombre del jugador que crees que marcará más goles."
         )
 
         default_red = ALL_TEAMS.index(existing_specials["most_red_cards_team"]) if existing_specials and existing_specials.get("most_red_cards_team") in ALL_TEAMS else 0
         most_red = st.selectbox(
-            "🟥 Most Red Cards (Team)",
-            ALL_TEAMS,
-            index=default_red,
-            key="sp_red",
+            "🟥 Más Tarjetas Rojas (Equipo)",
+            ALL_TEAMS, index=default_red, key="sp_red",
             format_func=lambda t: f"{flag(t)} {t}",
         )
 
     with col2:
         default_pen = ALL_TEAMS.index(existing_specials["most_penalties_team"]) if existing_specials and existing_specials.get("most_penalties_team") in ALL_TEAMS else 0
         most_penalties = st.selectbox(
-            "🎯 Most Penalties Scored (Team)",
-            ALL_TEAMS,
-            index=default_pen,
-            key="sp_pen",
+            "🎯 Más Penaltis Marcados (Equipo)",
+            ALL_TEAMS, index=default_pen, key="sp_pen",
             format_func=lambda t: f"{flag(t)} {t}",
         )
 
         default_rev = ALL_TEAMS.index(existing_specials["revelation_team"]) if existing_specials and existing_specials.get("revelation_team") in ALL_TEAMS else 0
         revelation = st.selectbox(
-            "🌟 Revelation Team of the World Cup",
-            ALL_TEAMS,
-            index=default_rev,
-            key="sp_rev",
+            "🌟 Equipo Revelación",
+            ALL_TEAMS, index=default_rev, key="sp_rev",
             format_func=lambda t: f"{flag(t)} {t}",
-            help="The underdog / surprise team that exceeds expectations."
+            help="El equipo sorpresa que supera las expectativas."
         )
 
-    if st.button("💾 Save Special Predictions", type="primary", use_container_width=True):
+    if st.button("✅ Finalizar (guarda automáticamente)", type="primary", use_container_width=True):
         if not top_scorer.strip():
-            st.error("Please enter a player name for the Top Scorer.")
+            st.error("⚠️ Introduce el nombre del máximo goleador.")
         else:
             save_special_prediction(user_id, top_scorer, most_red, most_penalties, revelation)
-            st.success("✅ Special category predictions saved!")
-            st.balloons()
+            st.session_state["step"] = 5
+            st.rerun()
 
-# ── TAB 4: LEADERBOARD ─────────────────────────────────────
-with tab4:
-    st.markdown('<div class="section-header"><h3>📊 Leaderboard & All Predictions</h3></div>', unsafe_allow_html=True)
+# ══════════════════════════════════════════════════════════════
+# STEP 5: THANK YOU / CONFIRMATION
+# ══════════════════════════════════════════════════════════════
+elif current_step == 5:
+    st.markdown("""
+<div class="thank-you">
+    <h2>🎉 ¡Gracias por participar!</h2>
+    <p>Tus predicciones han sido guardadas correctamente.</p>
+    <p>Podrás volver en cualquier momento para ver la clasificación actualizada.</p>
+    <p>¡Buena suerte! 🍀⚽</p>
+</div>
+""", unsafe_allow_html=True)
 
+    st.balloons()
+
+    st.markdown("---")
+
+    # Show leaderboard
+    st.markdown('<div class="section-header"><h3>🏆 Clasificación Actual</h3></div>', unsafe_allow_html=True)
     df = calculate_scores()
     if not df.empty:
         st.dataframe(df, use_container_width=True)
-
         if len(df) > 0:
             leader = df.iloc[0]
-            st.markdown(f"### 👑 Current Leader: **{leader['Player']}** with **{leader['TOTAL']}** points")
-    else:
-        st.info("No predictions yet.")
+            st.markdown(f"### 👑 Líder: **{leader['Player']}** con **{leader['TOTAL']}** puntos")
 
     st.markdown("---")
-    st.markdown("### 👀 View Everyone's Predictions")
+    if st.button("🔄 Volver al inicio", use_container_width=True):
+        st.session_state["step"] = 1
+        st.session_state.pop("user", None)
+        st.rerun()
+    if st.button("✏️ Modificar mis predicciones", use_container_width=True):
+        st.session_state["step"] = 2
+        st.rerun()
 
-    all_users = supabase.table("users").select("*").execute().data
-    if all_users:
-        selected_viewer = st.selectbox("Select a participant:", [u["name"] for u in all_users], key="viewer")
-        viewed_user = next(u for u in all_users if u["name"] == selected_viewer)
-        vid = viewed_user["id"]
-
-        vcol1, vcol2 = st.columns(2)
-        with vcol1:
-            st.markdown("#### 🏟️ Group Predictions")
-            vg = load_user_group_preds(vid)
-            if vg:
-                for gname in sorted(vg.keys()):
-                    p = vg[gname]
-                    st.write(f"**Group {gname}:** 🥇 {flag(p['first_place'])} {p['first_place']} · 🥈 {flag(p['second_place'])} {p['second_place']}")
-            else:
-                st.caption("No group predictions yet.")
-
-        with vcol2:
-            st.markdown("#### 🏆 Final Four")
-            vf = load_user_final_preds(vid)
-            if vf:
-                st.write(f"🥇 {flag(vf['winner'])} {vf['winner']}")
-                st.write(f"🥈 {flag(vf['second'])} {vf['second']}")
-                st.write(f"🥉 {flag(vf['third'])} {vf['third']}")
-                st.write(f"4️⃣ {flag(vf['fourth'])} {vf['fourth']}")
-            else:
-                st.caption("No final predictions yet.")
-
-            st.markdown("#### ⭐ Special Categories")
-            vs = load_user_special_preds(vid)
-            if vs:
-                st.write(f"⚽ Top Scorer: **{vs['top_scorer']}**")
-                st.write(f"🟥 Most Red Cards: {flag(vs['most_red_cards_team'])} {vs['most_red_cards_team']}")
-                st.write(f"🎯 Most Penalties: {flag(vs['most_penalties_team'])} {vs['most_penalties_team']}")
-                st.write(f"🌟 Revelation: {flag(vs['revelation_team'])} {vs['revelation_team']}")
-            else:
-                st.caption("No special predictions yet.")
-
-# ── TAB 5: ADMIN PANEL ─────────────────────────────────────
-with tab5:
-    st.markdown('<div class="section-header"><h3>🔧 Admin Panel – Enter Actual Results</h3></div>', unsafe_allow_html=True)
-    st.warning("⚠️ Only the pool organizer should use this section. Enter the real results as the tournament progresses to calculate scores.")
-
-    admin_pass = st.text_input("Admin Password", type="password", key="admin_pw")
-
-    if admin_pass == st.secrets.get("ADMIN_PASSWORD", "worldcup2026"):
-        st.success("🔓 Admin access granted.")
-
-        admin_tab1, admin_tab2, admin_tab3 = st.tabs(["Groups", "Final Four", "Special"])
-
-        with admin_tab1:
-            st.markdown("#### Enter actual group results")
-            actual_groups_raw = supabase.table("actual_results").select("*").execute().data
-            actual_map = {r["group_name"]: r for r in actual_groups_raw}
-
-            for gname in GROUPS:
-                teams = GROUPS[gname]
-                existing_actual = actual_map.get(gname, {})
-                st.markdown(f"**Group {gname}**")
-                ac1, ac2 = st.columns(2)
-                with ac1:
-                    def_1 = teams.index(existing_actual["first_place"]) if existing_actual.get("first_place") in teams else 0
-                    a_first = st.selectbox(f"1st", teams, index=def_1, key=f"adm_g{gname}_1", format_func=lambda t: f"{flag(t)} {t}")
-                with ac2:
-                    opts = [t for t in teams if t != a_first]
-                    def_2 = opts.index(existing_actual["second_place"]) if existing_actual.get("second_place") in opts else 0
-                    a_second = st.selectbox(f"2nd", opts, index=def_2, key=f"adm_g{gname}_2", format_func=lambda t: f"{flag(t)} {t}")
-
-                if st.button(f"Save Group {gname}", key=f"adm_save_{gname}"):
-                    supabase.table("actual_results").update({
-                        "first_place": a_first,
-                        "second_place": a_second,
-                    }).eq("group_name", gname).execute()
-                    st.success(f"Group {gname} results saved!")
-
-        with admin_tab2:
-            st.markdown("#### Enter actual final four")
-            af = supabase.table("actual_finals").select("*").execute().data
-            af = af[0] if af else {}
-
-            aw = st.selectbox("Winner", ALL_TEAMS, index=ALL_TEAMS.index(af["winner"]) if af.get("winner") in ALL_TEAMS else 0, key="adm_w", format_func=lambda t: f"{flag(t)} {t}")
-            a2 = st.selectbox("Second", [t for t in ALL_TEAMS if t != aw], key="adm_2", format_func=lambda t: f"{flag(t)} {t}")
-            a3 = st.selectbox("Third", [t for t in ALL_TEAMS if t not in [aw, a2]], key="adm_3", format_func=lambda t: f"{flag(t)} {t}")
-            a4 = st.selectbox("Fourth", [t for t in ALL_TEAMS if t not in [aw, a2, a3]], key="adm_4", format_func=lambda t: f"{flag(t)} {t}")
-
-            if st.button("Save Final Four Results", key="adm_save_finals"):
-                supabase.table("actual_finals").update({
-                    "winner": aw, "second": a2, "third": a3, "fourth": a4,
-                }).eq("id", af["id"]).execute()
-                st.success("Final four results saved!")
-
-        with admin_tab3:
-            st.markdown("#### Enter actual special results")
-            asp = supabase.table("actual_specials").select("*").execute().data
-            asp = asp[0] if asp else {}
-
-            a_scorer = st.text_input("Top Scorer", value=asp.get("top_scorer", "") or "", key="adm_scorer")
-            a_red = st.selectbox("Most Red Cards Team", ALL_TEAMS, key="adm_red", format_func=lambda t: f"{flag(t)} {t}")
-            a_pen = st.selectbox("Most Penalties Team", ALL_TEAMS, key="adm_pen", format_func=lambda t: f"{flag(t)} {t}")
-            a_rev = st.selectbox("Revelation Team", ALL_TEAMS, key="adm_rev", format_func=lambda t: f"{flag(t)} {t}")
-
-            if st.button("Save Special Results", key="adm_save_specials"):
-                supabase.table("actual_specials").update({
-                    "top_scorer": a_scorer,
-                    "most_red_cards_team": a_red,
-                    "most_penalties_team": a_pen,
-                    "revelation_team": a_rev,
-                }).eq("id", asp["id"]).execute()
-                st.success("Special results saved!")
-    elif admin_pass:
-        st.error("❌ Wrong password.")
